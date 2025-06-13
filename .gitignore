@@ -1,0 +1,23 @@
+# ไม่ต้องอัปโหลดโฟลเดอร์ node_modules
+node_modules/
+
+# ไฟล์ environment (ความลับ!)
+.env
+
+# Log files
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ไฟล์จาก editor/IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# ไฟล์ระบบปฏิบัติการ
+Thumbs.db
+ehthumbs.db
+Desktop.ini
