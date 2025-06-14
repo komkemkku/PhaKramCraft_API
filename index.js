@@ -1,18 +1,17 @@
-require('dotenv').config();
+require("dotenv").config();
+const express = require("express");
+const app = express();
 
-const { Pool } = require('pg');
+app.use(express.json());
 
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-});
+// import routes แบบรวม logic ในไฟล์เดียว
+const userRoutes = require("./routes/users.js");
+app.use("/users", userRoutes);
+
+const adminRoutes = require("./routes/admins.js");
+app.use("/admins", adminRoutes);
 
 const PORT = process.env.PORT || 3000;
-
-console.log('Postgres Pool created');
-console.log(`API Server will run on port ${PORT}`);
-
-// (code อื่นๆ ของคุณ)
+app.listen(PORT, () => {
+  console.log(`Server started on http://localhost:${PORT}`);
+});
