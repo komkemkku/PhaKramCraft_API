@@ -2,6 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const app = express();
 
+const cors = require("cors");
+app.use(cors());
+
 app.use(express.json());
 
 // import routes แบบรวม logic ในไฟล์เดียว
@@ -24,10 +27,10 @@ const paymentsystemsRoutes = require("./routes/paymentsystems.js");
 app.use("/paymentsystems", paymentsystemsRoutes);
 
 const addressRoutes = require("./routes/address.js");
-app.use("/address", addressRoutes)
+app.use("/address", addressRoutes);
 
 const wishlistRoutes = require("./routes/wishlists.js");
-app.use("/wishlists", wishlistRoutes)
+app.use("/wishlists", wishlistRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
