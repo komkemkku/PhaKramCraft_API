@@ -11,6 +11,24 @@ app.use("/users", userRoutes);
 const adminRoutes = require("./routes/admins.js");
 app.use("/admins", adminRoutes);
 
+const productRoutes = require("./routes/products.js");
+app.use("/products", productRoutes);
+
+const categoriesRoutes = require("./routes/categories.js");
+app.use("/categories", categoriesRoutes);
+
+const ownersRoutes = require("./routes/owners.js");
+app.use("/owners", ownersRoutes);
+
+const paymentsystemsRoutes = require("./routes/paymentsystems.js");
+app.use("/paymentsystems", paymentsystemsRoutes);
+
+const addressRoutes = require("./routes/address.js");
+app.use("/address", addressRoutes)
+
+const wishlistRoutes = require("./routes/wishlists.js");
+app.use("/wishlists", wishlistRoutes)
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);
