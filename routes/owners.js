@@ -6,6 +6,15 @@ require("dotenv").config();
 const authenticateAdmin = require("../middlewares/authenticateAdmin");
 const logAction = require("../middlewares/logger");
 
+// ฟังก์ชันช่วย: ดึง admin username จาก adminId
+async function getAdminUsername(adminId) {
+  if (!adminId) return null;
+  const result = await pool.query("SELECT username FROM admins WHERE id = $1", [
+    adminId,
+  ]);
+  return result.rows.length > 0 ? result.rows[0].username : null;
+}
+
 // GET /owners : ดูเจ้าของสินค้า/กลุ่มทั้งหมด
 router.get("/", async (req, res) => {
   try {
@@ -46,15 +55,19 @@ router.post("/", authenticateAdmin, async (req, res) => {
       "INSERT INTO ownerproducts (name, amount) VALUES ($1, $2) RETURNING *",
       [name, amount || 0]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "create_owner",
-      `Admin id=${req.adminId} เพิ่มเจ้าของสินค้า/กลุ่ม "${name}"`
+      `Admin (${
+        adminUsername || "id=" + req.adminId
+      }) เพิ่มเจ้าของสินค้า/กลุ่ม "${name}"`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await logAction(null, req.adminId, "create_owner_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "create_owner_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -69,9 +82,10 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "update_owner_failed",
         `ไม่พบเจ้าของ id=${id}`
       );
@@ -83,15 +97,19 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
       "UPDATE ownerproducts SET name = $1, amount = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
       [name ?? oldOwner.name, amount ?? oldOwner.amount, id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "update_owner",
-      `Admin id=${req.adminId} แก้ไขเจ้าของ id=${id} (${oldOwner.name} => ${name})`
+      `Admin (${adminUsername || "id=" + req.adminId}) แก้ไขเจ้าของ id=${id} (${
+        oldOwner.name
+      } => ${name})`
     );
     res.json(result.rows[0]);
   } catch (err) {
-    await logAction(null, req.adminId, "update_owner_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "update_owner_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -105,9 +123,10 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "delete_owner_failed",
         `ไม่พบเจ้าของ id=${id}`
       );
@@ -119,15 +138,19 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       "DELETE FROM ownerproducts WHERE id = $1 RETURNING *",
       [id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "delete_owner",
-      `Admin id=${req.adminId} ลบเจ้าของ id=${id} ชื่อ="${oldOwner.name}"`
+      `Admin (${
+        adminUsername || "id=" + req.adminId
+      }) ลบเจ้าของ id=${id} ชื่อ="${oldOwner.name}"`
     );
     res.json({ message: "ลบเจ้าของสินค้า/กลุ่มสำเร็จ", owner: result.rows[0] });
   } catch (err) {
-    await logAction(null, req.adminId, "delete_owner_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "delete_owner_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

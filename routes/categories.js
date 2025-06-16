@@ -6,12 +6,25 @@ require("dotenv").config();
 const authenticateAdmin = require("../middlewares/authenticateAdmin");
 const logAction = require("../middlewares/logger");
 
+// ฟังก์ชันช่วย: ดึง admin username จาก adminId
+async function getAdminUsername(adminId) {
+  if (!adminId) return null;
+  const result = await pool.query("SELECT username FROM admins WHERE id = $1", [
+    adminId,
+  ]);
+  return result.rows.length > 0 ? result.rows[0].username : null;
+}
+
+// GET /categories
 // GET /categories
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM categories ORDER BY id DESC"
-    );
+    const result = await pool.query(`
+      SELECT c.*, 
+        (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) as count
+      FROM categories c
+      ORDER BY c.id DESC
+    `);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -45,15 +58,19 @@ router.post("/", authenticateAdmin, async (req, res) => {
       "INSERT INTO categories (name, is_active) VALUES ($1, $2) RETURNING *",
       [name, is_active]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "create_category",
-      `Admin id=${req.adminId} เพิ่มหมวดหมู่ใหม่ "${name}"`
+      `Admin (${
+        adminUsername || "id=" + req.adminId
+      }) เพิ่มหมวดหมู่ใหม่ "${name}"`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await logAction(null, req.adminId, "create_category_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "create_category_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -69,9 +86,10 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "update_category_failed",
         `ไม่พบหมวดหมู่ id=${id}`
       );
@@ -83,15 +101,19 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
       "UPDATE categories SET name = $1, is_active = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
       [name ?? oldCat.name, is_active ?? oldCat.is_active, id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "update_category",
-      `Admin id=${req.adminId} แก้ไขหมวด id=${id} (${oldCat.name}=>${name})`
+      `Admin (${adminUsername || "id=" + req.adminId}) แก้ไขหมวด id=${id} (${
+        oldCat.name
+      }=>${name})`
     );
     res.json(result.rows[0]);
   } catch (err) {
-    await logAction(null, req.adminId, "update_category_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "update_category_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -105,9 +127,10 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "delete_category_failed",
         `ไม่พบหมวดหมู่ id=${id}`
       );
@@ -119,15 +142,19 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       "DELETE FROM categories WHERE id = $1 RETURNING *",
       [id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "delete_category",
-      `Admin id=${req.adminId} ลบหมวดหมู่ id=${id} ชื่อ="${oldCat.name}"`
+      `Admin (${
+        adminUsername || "id=" + req.adminId
+      }) ลบหมวดหมู่ id=${id} ชื่อ="${oldCat.name}"`
     );
     res.json({ message: "ลบหมวดหมู่สำเร็จ", category: result.rows[0] });
   } catch (err) {
-    await logAction(null, req.adminId, "delete_category_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "delete_category_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

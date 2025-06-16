@@ -5,81 +5,110 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-const authenticateSuperAdmin = require("../middlewares/auth");
+const authenticateSuperAdmin = require("../middlewares/auth"); // ตรวจสอบ super admin
 const logAction = require("../middlewares/logger");
 
-// GET /admins : ดูรายชื่อแอดมินทั้งหมด (เฉพาะ super admin)
+// helper ดึง username จาก id
+const getAdminUsername = async (adminId) => {
+  if (!adminId) return null;
+  const res = await pool.query("SELECT username FROM admins WHERE id = $1", [
+    adminId,
+  ]);
+  return res.rows.length > 0 ? res.rows[0].username : null;
+};
+
+// GET /admins : ดูแอดมินทั้งหมด (เฉพาะ super admin)
 router.get("/", authenticateSuperAdmin, async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM admins");
+    const result = await pool.query(
+      "SELECT id, name, username, role_id FROM admins ORDER BY id DESC"
+    );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
-      null, // user_id
-      req.adminId, // admin_id
+      null,
+      adminUsername,
       "get_admins",
-      `Super Admin (id=${req.adminId}) ดูรายชื่อแอดมิน`
+      `Super Admin (${adminUsername || "id=" + req.adminId}) ดูรายชื่อแอดมิน`
     );
     res.json(result.rows);
   } catch (err) {
-    await logAction(null, req.adminId, "get_admins_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "get_admins_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /admins : เพิ่มผู้ดูแลระบบใหม่ (role_id = 2)
+// POST /admins : เพิ่มแอดมินใหม่ (role_id = 2 อัตโนมัติ)
 router.post("/", authenticateSuperAdmin, async (req, res) => {
-  const { username, password } = req.body;
+  const { name, username, password } = req.body;
+  if (!name || !username || !password) {
+    return res
+      .status(400)
+      .json({ error: "กรุณาระบุชื่อ, username และรหัสผ่าน" });
+  }
   try {
     const result = await pool.query(
-      "INSERT INTO admins (username, password, role_id) VALUES ($1, $2, $3) RETURNING *",
-      [username, password, 2]
+      "INSERT INTO admins (name, username, password, role_id) VALUES ($1, $2, $3, 2) RETURNING id, name, username, role_id",
+      [name, username, password]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "create_admin",
-      `Super Admin (id=${req.adminId}) เพิ่มแอดมินใหม่ username=${username}, id=${result.rows[0].id}`
+      `Super Admin (${
+        adminUsername || "id=" + req.adminId
+      }) เพิ่มแอดมินใหม่ username=${username}, name=${name}, id=${
+        result.rows[0].id
+      }`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await logAction(null, req.adminId, "create_admin_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "create_admin_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH /admins/:id : แก้ไขข้อมูลผู้ดูแลระบบ
+// PATCH /admins/:id : แก้ไขข้อมูลแอดมิน
 router.patch("/:id", authenticateSuperAdmin, async (req, res) => {
   const { id } = req.params;
-  const { username, password } = req.body;
+  const { name, username, password } = req.body;
   try {
-    // ดึงข้อมูลเดิมเพื่อ log (optional)
     const oldResult = await pool.query("SELECT * FROM admins WHERE id = $1", [
       id,
     ]);
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "update_admin_failed",
         `ไม่พบแอดมิน id=${id}`
       );
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานนี้" });
     }
     const oldAdmin = oldResult.rows[0];
-
+    let newPassword = password || oldAdmin.password;
     const result = await pool.query(
-      "UPDATE admins SET username = $1, password = $2 WHERE id = $3 RETURNING *",
-      [username, password, id]
+      "UPDATE admins SET name = $1, username = $2, password = $3 WHERE id = $4 RETURNING id, name, username, role_id",
+      [name || oldAdmin.name, username || oldAdmin.username, newPassword, id]
     );
-
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "update_admin",
-      `Super Admin (id=${req.adminId}) แก้ไขแอดมิน id=${id} จาก username=${oldAdmin.username} => ${username}`
+      `Super Admin (${
+        adminUsername || "id=" + req.adminId
+      }) แก้ไขแอดมิน id=${id} (${oldAdmin.username}/${
+        oldAdmin.name
+      } => ${username}/${name})`
     );
     res.json({ message: "อัปเดตข้อมูลสำเร็จ", user: result.rows[0] });
   } catch (err) {
-    await logAction(null, req.adminId, "update_admin_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "update_admin_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -88,45 +117,50 @@ router.patch("/:id", authenticateSuperAdmin, async (req, res) => {
 router.delete("/:id", authenticateSuperAdmin, async (req, res) => {
   const { id } = req.params;
   try {
-    // ดึงข้อมูลเดิมเพื่อ log
     const oldResult = await pool.query("SELECT * FROM admins WHERE id = $1", [
       id,
     ]);
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "delete_admin_failed",
         `ไม่พบแอดมิน id=${id}`
       );
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานนี้" });
     }
     const oldAdmin = oldResult.rows[0];
-
     const result = await pool.query(
-      "DELETE FROM admins WHERE id = $1 RETURNING *",
+      "DELETE FROM admins WHERE id = $1 RETURNING id, name, username, role_id",
       [id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "delete_admin",
-      `Super Admin (id=${req.adminId}) ลบแอดมิน id=${id}, username=${oldAdmin.username}`
+      `Super Admin (${
+        adminUsername || "id=" + req.adminId
+      }) ลบแอดมิน id=${id}, username=${oldAdmin.username}, name=${
+        oldAdmin.name
+      }`
     );
     res.json({ message: "ลบผู้ดูแลระบบสำเร็จ", user: result.rows[0] });
   } catch (err) {
-    await logAction(null, req.adminId, "delete_admin_error", err.message);
+    const adminUsername = await getAdminUsername(req.adminId);
+    await logAction(null, adminUsername, "delete_admin_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /admins/login : เข้าสู่ระบบและสร้าง JWT token (ไม่ต้องตรวจ role)
+// POST /admins/login (ไม่ต้อง auth superadmin)
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query(
-      "SELECT * FROM admins WHERE username = $1 AND password = $2",
-      [username, password]
+      "SELECT * FROM admins WHERE username = $1",
+      [username]
     );
     if (result.rowCount === 0) {
       await logAction(
@@ -140,18 +174,36 @@ router.post("/login", async (req, res) => {
         .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
     }
     const admin = result.rows[0];
+    if (password !== admin.password) {
+      await logAction(
+        null,
+        null,
+        "login_admin_failed",
+        `แอดมินล็อกอินล้มเหลว username=${username}`
+      );
+      return res
+        .status(401)
+        .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
+    }
     const payload = {
       userId: admin.id,
       username: admin.username,
+      name: admin.name,
       role_id: admin.role_id,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
-    await logAction(null, admin.id, "login", `แอดมินล็อกอิน: ${username}`);
+    await logAction(
+      null,
+      admin.username,
+      "login",
+      `แอดมินล็อกอิน: ${username}`
+    );
     res.json({
       message: "เข้าสู่ระบบสำเร็จ",
       token,
       admin: {
         id: admin.id,
+        name: admin.name,
         username: admin.username,
         role_id: admin.role_id,
       },

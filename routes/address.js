@@ -6,6 +6,15 @@ require("dotenv").config();
 const authenticateUser = require("../middlewares/authUser");
 const logAction = require("../middlewares/logger");
 
+// ฟังก์ชันช่วย: ดึง username จาก user_id
+async function getUsernameById(userId) {
+  if (!userId) return null;
+  const result = await pool.query("SELECT username FROM users WHERE id = $1", [
+    userId,
+  ]);
+  return result.rows.length > 0 ? result.rows[0].username : null;
+}
+
 // GET /address : ดูที่อยู่ทั้งหมดของ user
 router.get("/", authenticateUser, async (req, res) => {
   const user_id = req.userId;
@@ -14,8 +23,12 @@ router.get("/", authenticateUser, async (req, res) => {
       "SELECT * FROM address WHERE user_id = $1 ORDER BY id DESC",
       [user_id]
     );
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "get_addresses", "ดูที่อยู่ทั้งหมด");
     res.json(result.rows);
   } catch (err) {
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "get_addresses_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -29,11 +42,21 @@ router.get("/:id", authenticateUser, async (req, res) => {
       "SELECT * FROM address WHERE id = $1 AND user_id = $2",
       [id, user_id]
     );
+    const username = await getUsernameById(user_id);
     if (result.rowCount === 0) {
+      await logAction(
+        username,
+        null,
+        "get_address_failed",
+        `ไม่พบที่อยู่ id=${id}`
+      );
       return res.status(404).json({ error: "ไม่พบที่อยู่นี้" });
     }
+    await logAction(username, null, "get_address", `ดูที่อยู่ id=${id}`);
     res.json(result.rows[0]);
   } catch (err) {
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "get_address_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -51,15 +74,17 @@ router.post("/", authenticateUser, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [user_id, firstname, lastname, address_detail, province, zipcode]
     );
+    const username = await getUsernameById(user_id);
     await logAction(
-      user_id,
+      username,
       null,
       "add_address",
       `เพิ่มที่อยู่ใหม่ id=${result.rows[0].id}`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await logAction(user_id, null, "add_address_error", err.message);
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "add_address_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -75,9 +100,10 @@ router.patch("/:id", authenticateUser, async (req, res) => {
       "SELECT * FROM address WHERE id = $1 AND user_id = $2",
       [id, user_id]
     );
+    const username = await getUsernameById(user_id);
     if (oldResult.rowCount === 0) {
       await logAction(
-        user_id,
+        username,
         null,
         "update_address_failed",
         `ไม่พบที่อยู่ id=${id}`
@@ -101,10 +127,11 @@ router.patch("/:id", authenticateUser, async (req, res) => {
         user_id,
       ]
     );
-    await logAction(user_id, null, "update_address", `แก้ไขที่อยู่ id=${id}`);
+    await logAction(username, null, "update_address", `แก้ไขที่อยู่ id=${id}`);
     res.json(result.rows[0]);
   } catch (err) {
-    await logAction(user_id, null, "update_address_error", err.message);
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "update_address_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -118,9 +145,10 @@ router.delete("/:id", authenticateUser, async (req, res) => {
       "SELECT * FROM address WHERE id = $1 AND user_id = $2",
       [id, user_id]
     );
+    const username = await getUsernameById(user_id);
     if (oldResult.rowCount === 0) {
       await logAction(
-        user_id,
+        username,
         null,
         "delete_address_failed",
         `ไม่พบที่อยู่ id=${id}`
@@ -131,10 +159,11 @@ router.delete("/:id", authenticateUser, async (req, res) => {
       "DELETE FROM address WHERE id = $1 AND user_id = $2 RETURNING *",
       [id, user_id]
     );
-    await logAction(user_id, null, "delete_address", `ลบที่อยู่ id=${id}`);
+    await logAction(username, null, "delete_address", `ลบที่อยู่ id=${id}`);
     res.json({ message: "ลบที่อยู่สำเร็จ", address: result.rows[0] });
   } catch (err) {
-    await logAction(user_id, null, "delete_address_error", err.message);
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "delete_address_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -4,8 +4,13 @@ const pool = require("../db");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
+const bcrypt = require("bcrypt");
+const SALT_ROUNDS = 10;
+
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 const logAction = require("../middlewares/logger");
+
+const authenticateUser = require("../middlewares/authUser");
 
 // GET /users
 router.get("/", async (req, res) => {
@@ -35,12 +40,13 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   const { firstname, lastname, email, phone, username, password } = req.body;
   try {
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
     const result = await pool.query(
       "INSERT INTO users (firstname, lastname, email, phone, username, password, role_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-      [firstname, lastname, email, phone, username, password, 1]
+      [firstname, lastname, email, phone, username, hashedPassword, 1]
     );
     await logAction(
-      result.rows[0].id,
+      result.rows[0].username,
       null,
       "register",
       `User registered: ${username}`
@@ -59,10 +65,9 @@ router.post("/", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE username = $1 AND password = $2",
-      [username, password]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE username = $1", [
+      username,
+    ]);
     if (result.rowCount === 0) {
       await logAction(
         null,
@@ -75,13 +80,31 @@ router.post("/login", async (req, res) => {
         .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
     }
     const user = result.rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      await logAction(
+        null,
+        null,
+        "login_failed",
+        `User login failed: ${username}`
+      );
+      return res
+        .status(401)
+        .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
+    }
     const payload = {
       userId: user.id,
       username: user.username,
       role_id: user.role_id,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
-    await logAction(user.id, null, "login", `User logged in: ${username}`);
+
+    await logAction(
+      user.username,
+      null,
+      "login",
+      `User logged in: ${username}`
+    );
 
     res.json({
       message: "เข้าสู่ระบบสำเร็จ",
@@ -106,26 +129,37 @@ router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const { firstname, lastname, email, username, password, phone } = req.body;
   try {
+    // hash password เฉพาะกรณีมีการส่ง password ใหม่มาด้วย
+    let updatePassword = password;
+    if (password) {
+      updatePassword = await bcrypt.hash(password, SALT_ROUNDS);
+    }
+
     const result = await pool.query(
       "UPDATE users SET firstname=$1, lastname=$2, email=$3, username=$4, password=$5, phone=$6 WHERE id=$7 RETURNING *",
-      [firstname, lastname, email, username, password, phone, id]
+      [firstname, lastname, email, username, updatePassword, phone, id]
     );
     if (result.rowCount === 0) {
       await logAction(
-        id,
+        null,
         null,
         "update_failed",
         `User not found for update: id=${id}`
       );
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานนี้" });
     }
-    await logAction(id, null, "update", `User updated: ${username}`);
+    await logAction(
+      result.rows[0].username,
+      null,
+      "update",
+      `User updated: ${username}`
+    );
     res.json(result.rows[0]);
   } catch (err) {
     if (err.code === "23505") {
       res.status(400).json({ error: "Email หรือ Username นี้ถูกใช้งานแล้ว" });
     } else {
-      await logAction(id, null, "update_error", err.message);
+      await logAction(null, null, "update_error", err.message);
       res.status(500).json({ error: err.message });
     }
   }
@@ -141,22 +175,25 @@ router.delete("/:id", async (req, res) => {
     );
     if (result.rowCount === 0) {
       await logAction(
-        id,
+        null,
         null,
         "delete_failed",
         `User not found for delete: id=${id}`
       );
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานนี้" });
     }
-    await logAction(id, null, "delete", `User deleted: id=${id}`);
+    await logAction(
+      result.rows[0].username,
+      null,
+      "delete",
+      `User deleted: id=${id}`
+    );
     res.json({ message: "ลบผู้ใช้งานสำเร็จ", user: result.rows[0] });
   } catch (err) {
-    await logAction(id, null, "delete_error", err.message);
+    await logAction(null, null, "delete_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-const authenticateUser = require("../middlewares/authUser");
 
 // GET /users/me/info (ยืนยันตัวตนด้วย token)
 router.get("/me/info", authenticateUser, async (req, res) => {
@@ -252,7 +289,12 @@ router.get("/me/info", authenticateUser, async (req, res) => {
     });
     const orders = Object.values(ordersMap);
 
-    await logAction(id, null, "get_user_info", "User viewed personal info");
+    await logAction(
+      userResult.rows[0].username,
+      null,
+      "get_user_info",
+      "User viewed personal info"
+    );
 
     res.json({
       user: userResult.rows[0],
@@ -261,7 +303,7 @@ router.get("/me/info", authenticateUser, async (req, res) => {
       orders: orders,
     });
   } catch (err) {
-    await logAction(id, null, "get_user_info_error", err.message);
+    await logAction(null, null, "get_user_info_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });

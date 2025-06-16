@@ -1,28 +1,33 @@
 const pool = require("../db");
 
-const logAction = async (user_id, admin_id, action, description) => {
+/**
+ * logAction
+ * @param {string} username - ชื่อผู้ใช้ทั่วไป
+ * @param {string} adminname - ชื่อแอดมิน
+ * @param {string} action
+ * @param {string} description
+ */
+const logAction = async (username, adminname, action, description) => {
   try {
-    // ถ้ามี user_id
-    if (user_id) {
+    if (username) {
       await pool.query(
-        "INSERT INTO logs (user_id, action, description) VALUES ($1, $2, $3)",
-        [user_id, action, description]
+        "INSERT INTO logs (username, action, description) VALUES ($1, $2, $3)",
+        [username, action, description]
       );
-    }
-    // ถ้ามี admin_id
-    else if (admin_id) {
+    } else if (adminname) {
       await pool.query(
-        "INSERT INTO logs (admin_id, action, description) VALUES ($1, $2, $3)",
-        [admin_id, action, description]
+        "INSERT INTO logs (adminname, action, description) VALUES ($1, $2, $3)",
+        [adminname, action, description]
       );
-    }
-    // ไม่ทราบว่าใครเป็นคนทำ
-    else {
+    } else {
       await pool.query(
         "INSERT INTO logs (action, description) VALUES ($1, $2)",
         [action, `${description} (ไม่ทราบบุคคล)`]
       );
-      console.warn("Log ไม่มี user_id หรือ admin_id:", { action, description });
+      console.warn("Log ไม่มี username หรือ adminname:", {
+        action,
+        description,
+      });
     }
   } catch (err) {
     console.error("Error writing log:", err);

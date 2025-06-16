@@ -6,6 +6,15 @@ require("dotenv").config();
 const authenticateAdmin = require("../middlewares/authenticateAdmin");
 const logAction = require("../middlewares/logger");
 
+// ฟังก์ชันช่วย: ดึง admin username จาก adminId
+async function getAdminUsername(adminId) {
+  if (!adminId) return null;
+  const result = await pool.query("SELECT username FROM admins WHERE id = $1", [
+    adminId,
+  ]);
+  return result.rows.length > 0 ? result.rows[0].username : null;
+}
+
 // GET /paymentsystems : ดูช่องทางรับเงินทั้งหมด
 router.get("/", async (req, res) => {
   try {
@@ -50,17 +59,21 @@ router.post("/", authenticateAdmin, async (req, res) => {
        RETURNING *`,
       [qrCode, name_account, name_bank, number_account, name_branch]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "create_paymentsystem",
-      `Admin id=${req.adminId} เพิ่มช่องทางรับเงินใหม่ (${name_account}, ${name_bank})`
+      `Admin (${
+        adminUsername || "id=" + req.adminId
+      }) เพิ่มช่องทางรับเงินใหม่ (${name_account}, ${name_bank})`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "create_paymentsystem_error",
       err.message
     );
@@ -80,9 +93,10 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "update_paymentsystem_failed",
         `ไม่พบช่องทาง id=${id}`
       );
@@ -103,17 +117,21 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
         id,
       ]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "update_paymentsystem",
-      `Admin id=${req.adminId} แก้ไขช่องทาง id=${id} (${oldPS.name_account}, ${oldPS.name_bank})`
+      `Admin (${adminUsername || "id=" + req.adminId}) แก้ไขช่องทาง id=${id} (${
+        oldPS.name_account
+      }, ${oldPS.name_bank})`
     );
     res.json(result.rows[0]);
   } catch (err) {
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "update_paymentsystem_error",
       err.message
     );
@@ -130,9 +148,10 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       [id]
     );
     if (oldResult.rowCount === 0) {
+      const adminUsername = await getAdminUsername(req.adminId);
       await logAction(
         null,
-        req.adminId,
+        adminUsername,
         "delete_paymentsystem_failed",
         `ไม่พบช่องทาง id=${id}`
       );
@@ -144,20 +163,24 @@ router.delete("/:id", authenticateAdmin, async (req, res) => {
       "DELETE FROM paymentsystems WHERE id = $1 RETURNING *",
       [id]
     );
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "delete_paymentsystem",
-      `Admin id=${req.adminId} ลบช่องทาง id=${id} (${oldPS.name_account}, ${oldPS.name_bank})`
+      `Admin (${adminUsername || "id=" + req.adminId}) ลบช่องทาง id=${id} (${
+        oldPS.name_account
+      }, ${oldPS.name_bank})`
     );
     res.json({
       message: "ลบช่องทางรับเงินสำเร็จ",
       paymentsystem: result.rows[0],
     });
   } catch (err) {
+    const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
       null,
-      req.adminId,
+      adminUsername,
       "delete_paymentsystem_error",
       err.message
     );

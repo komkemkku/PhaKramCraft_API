@@ -6,6 +6,15 @@ require("dotenv").config();
 const authenticateUser = require("../middlewares/authUser");
 const logAction = require("../middlewares/logger");
 
+// ฟังก์ชันช่วย: ดึง username จาก user_id
+async function getUsernameById(userId) {
+  if (!userId) return null;
+  const result = await pool.query("SELECT username FROM users WHERE id = $1", [
+    userId,
+  ]);
+  return result.rows.length > 0 ? result.rows[0].username : null;
+}
+
 // GET /wishlist : ดูสินค้าที่กดถูกใจทั้งหมด (login เท่านั้น)
 router.get("/", authenticateUser, async (req, res) => {
   const user_id = req.userId;
@@ -19,8 +28,13 @@ router.get("/", authenticateUser, async (req, res) => {
          ORDER BY w.created_at DESC`,
       [user_id]
     );
+    // เก็บ log ว่า user เข้าดู wishlist
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "view_wishlist", "ดูรายการสินค้าถูกใจ");
     res.json(result.rows);
   } catch (err) {
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "view_wishlist_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -45,15 +59,17 @@ router.post("/", authenticateUser, async (req, res) => {
       "INSERT INTO wishlists (user_id, product_id) VALUES ($1, $2) RETURNING *",
       [user_id, product_id]
     );
+    const username = await getUsernameById(user_id);
     await logAction(
-      user_id,
+      username,
       null,
       "add_wishlist",
       `เพิ่มสินค้าถูกใจ product_id=${product_id}`
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    await logAction(user_id, null, "add_wishlist_error", err.message);
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "add_wishlist_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -75,10 +91,17 @@ router.delete("/:id", authenticateUser, async (req, res) => {
       "DELETE FROM wishlists WHERE id = $1 RETURNING *",
       [id]
     );
-    await logAction(user_id, null, "delete_wishlist", `ลบสินค้าถูกใจ id=${id}`);
+    const username = await getUsernameById(user_id);
+    await logAction(
+      username,
+      null,
+      "delete_wishlist",
+      `ลบสินค้าถูกใจ id=${id}`
+    );
     res.json({ message: "ลบสำเร็จ", wishlist: result.rows[0] });
   } catch (err) {
-    await logAction(user_id, null, "delete_wishlist_error", err.message);
+    const username = await getUsernameById(user_id);
+    await logAction(username, null, "delete_wishlist_error", err.message);
     res.status(500).json({ error: err.message });
   }
 });
