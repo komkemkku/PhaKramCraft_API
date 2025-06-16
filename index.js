@@ -32,6 +32,12 @@ app.use("/address", addressRoutes);
 const wishlistRoutes = require("./routes/wishlists.js");
 app.use("/wishlists", wishlistRoutes);
 
+const logRoutes = require("./routes/logs.js");
+app.use("/logs", logRoutes);
+
+const cartRoutes = require("./routes/carts.js");
+app.use("/carts", cartRoutes);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);

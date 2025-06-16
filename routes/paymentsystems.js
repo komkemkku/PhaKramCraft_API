@@ -46,18 +46,35 @@ router.get("/:id", async (req, res) => {
 
 // POST /paymentsystems : เพิ่มช่องทาง (admin เท่านั้น)
 router.post("/", authenticateAdmin, async (req, res) => {
-  const { qrCode, name_account, name_bank, number_account, name_branch } =
-    req.body;
+  const {
+    qrCode,
+    name_account,
+    name_bank,
+    number_account,
+    name_branch,
+    is_active,
+  } = req.body;
   if (!name_account || !name_bank || !number_account) {
     return res.status(400).json({ error: "กรุณากรอกข้อมูลบัญชีให้ครบ" });
   }
   try {
+    // ถ้า active อันนี้ ต้อง set อันอื่นเป็น false
+    if (is_active === true) {
+      await pool.query("UPDATE paymentsystems SET is_active = false");
+    }
     const result = await pool.query(
       `INSERT INTO paymentsystems
-       (qrCode, name_account, name_bank, number_account, name_branch)
-       VALUES ($1, $2, $3, $4, $5)
+       (qrCode, name_account, name_bank, number_account, name_branch, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [qrCode, name_account, name_bank, number_account, name_branch]
+      [
+        qrCode,
+        name_account,
+        name_bank,
+        number_account,
+        name_branch,
+        !!is_active,
+      ]
     );
     const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
@@ -84,8 +101,14 @@ router.post("/", authenticateAdmin, async (req, res) => {
 // PATCH /paymentsystems/:id : แก้ไขช่องทาง (admin เท่านั้น)
 router.patch("/:id", authenticateAdmin, async (req, res) => {
   const { id } = req.params;
-  const { qrCode, name_account, name_bank, number_account, name_branch } =
-    req.body;
+  const {
+    qrCode,
+    name_account,
+    name_bank,
+    number_account,
+    name_branch,
+    is_active,
+  } = req.body;
   try {
     // ดึงข้อมูลเก่าไว้ log
     const oldResult = await pool.query(
@@ -104,16 +127,26 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
     }
     const oldPS = oldResult.rows[0];
 
+    // ถ้า active = true ต้อง set อันอื่นเป็น false
+    if (is_active === true) {
+      await pool.query(
+        "UPDATE paymentsystems SET is_active = false WHERE id <> $1",
+        [id]
+      );
+    }
+
     const result = await pool.query(
       `UPDATE paymentsystems SET
-        qrCode = $1, name_account = $2, name_bank = $3, number_account = $4, name_branch = $5, updated_at = NOW()
-        WHERE id = $6 RETURNING *`,
+        qrCode = $1, name_account = $2, name_bank = $3, number_account = $4, name_branch = $5,
+        is_active = $6, updated_at = NOW()
+        WHERE id = $7 RETURNING *`,
       [
         qrCode ?? oldPS.qrCode,
         name_account ?? oldPS.name_account,
         name_bank ?? oldPS.name_bank,
         number_account ?? oldPS.number_account,
         name_branch ?? oldPS.name_branch,
+        typeof is_active === "boolean" ? is_active : oldPS.is_active,
         id,
       ]
     );
