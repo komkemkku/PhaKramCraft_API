@@ -7,6 +7,7 @@ require("dotenv").config();
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 const authenticateSuperAdmin = require("../middlewares/auth"); // ตรวจสอบ super admin
 const logAction = require("../middlewares/logger");
+const bcrypt = require("bcrypt");
 
 // helper ดึง username จาก id
 const getAdminUsername = async (adminId) => {
@@ -38,7 +39,7 @@ router.get("/", authenticateSuperAdmin, async (req, res) => {
   }
 });
 
-// POST /admins : เพิ่มแอดมินใหม่ (role_id = 2 อัตโนมัติ)
+// POST /admins : เพิ่มแอดมินใหม่ (role_id = 3 อัตโนมัติ)
 router.post("/", authenticateSuperAdmin, async (req, res) => {
   const { name, username, password } = req.body;
   if (!name || !username || !password) {
@@ -47,9 +48,13 @@ router.post("/", authenticateSuperAdmin, async (req, res) => {
       .json({ error: "กรุณาระบุชื่อ, username และรหัสผ่าน" });
   }
   try {
+    // 1. hash password ก่อนบันทึก
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
     const result = await pool.query(
-      "INSERT INTO admins (name, username, password, role_id) VALUES ($1, $2, $3, 2) RETURNING id, name, username, role_id",
-      [name, username, password]
+      "INSERT INTO admins (name, username, password, role_id) VALUES ($1, $2, $3, 3) RETURNING id, name, username, role_id",
+      [name, username, hashedPassword]
     );
     const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
@@ -89,7 +94,14 @@ router.patch("/:id", authenticateSuperAdmin, async (req, res) => {
       return res.status(404).json({ error: "ไม่พบผู้ใช้งานนี้" });
     }
     const oldAdmin = oldResult.rows[0];
-    let newPassword = password || oldAdmin.password;
+
+    // hash password ถ้ามีการส่ง password ใหม่มา
+    let newPassword = oldAdmin.password;
+    if (password) {
+      const saltRounds = 10;
+      newPassword = await bcrypt.hash(password, saltRounds);
+    }
+
     const result = await pool.query(
       "UPDATE admins SET name = $1, username = $2, password = $3 WHERE id = $4 RETURNING id, name, username, role_id",
       [name || oldAdmin.name, username || oldAdmin.username, newPassword, id]
@@ -101,9 +113,9 @@ router.patch("/:id", authenticateSuperAdmin, async (req, res) => {
       "update_admin",
       `Super Admin (${
         adminUsername || "id=" + req.adminId
-      }) แก้ไขแอดมิน id=${id} (${oldAdmin.username}/${
-        oldAdmin.name
-      } => ${username}/${name})`
+      }) แก้ไขแอดมิน id=${id} (${oldAdmin.username}/${oldAdmin.name} => ${
+        username || oldAdmin.username
+      }/${name || oldAdmin.name})`
     );
     res.json({ message: "อัปเดตข้อมูลสำเร็จ", user: result.rows[0] });
   } catch (err) {
@@ -154,7 +166,6 @@ router.delete("/:id", authenticateSuperAdmin, async (req, res) => {
   }
 });
 
-// POST /admins/login (ไม่ต้อง auth superadmin)
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -174,7 +185,10 @@ router.post("/login", async (req, res) => {
         .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
     }
     const admin = result.rows[0];
-    if (password !== admin.password) {
+
+    // ตรวจสอบรหัสผ่าน hash ด้วย bcrypt
+    const passwordMatch = await bcrypt.compare(password, admin.password);
+    if (!passwordMatch) {
       await logAction(
         null,
         null,
@@ -185,6 +199,7 @@ router.post("/login", async (req, res) => {
         .status(401)
         .json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
     }
+
     const payload = {
       userId: admin.id,
       username: admin.username,

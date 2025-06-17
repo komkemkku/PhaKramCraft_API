@@ -26,8 +26,8 @@ app.use("/owners", ownersRoutes);
 const paymentsystemsRoutes = require("./routes/paymentsystems.js");
 app.use("/paymentsystems", paymentsystemsRoutes);
 
-const addressRoutes = require("./routes/address.js");
-app.use("/address", addressRoutes);
+const addressesRouter = require("./routes/addresses");
+app.use("/addresses", addressesRouter);
 
 const wishlistRoutes = require("./routes/wishlists.js");
 app.use("/wishlists", wishlistRoutes);
@@ -37,6 +37,22 @@ app.use("/logs", logRoutes);
 
 const cartRoutes = require("./routes/carts.js");
 app.use("/carts", cartRoutes);
+
+const checkoutRoutes = require("./routes/checkouts.js");
+app.use("/checkouts", checkoutRoutes);
+
+const orderUserRoutes = require("./routes/orderUsers.js");
+app.use("/orderUsers", orderUserRoutes);
+
+const orderpayRoutes = require("./routes/orderpayments.js");
+app.use("/order-payments", orderpayRoutes);
+
+const notificationRoutes = require("./routes/notifications");
+app.use("/notifications", notificationRoutes);
+
+const adminorderRoutes = require("./routes/admin-orders.js");
+app.use("/adminorders", adminorderRoutes);
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
