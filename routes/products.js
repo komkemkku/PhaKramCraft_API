@@ -115,6 +115,7 @@ router.post("/", authenticateAdmin, async (req, res) => {
     is_active = true,
     category_id,
     owner_id,
+    img, // <<-- ฟิลด์ลิงก์รูปเดียว
   } = req.body;
 
   if (!name || !price || !category_id) {
@@ -124,10 +125,20 @@ router.post("/", authenticateAdmin, async (req, res) => {
   }
   try {
     const result = await pool.query(
-      `INSERT INTO products (name, price, cost, description, stock, is_active, category_id, owner_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO products (name, price, cost, description, stock, is_active, category_id, owner_id, img)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [name, price, cost, description, stock, is_active, category_id, owner_id]
+      [
+        name,
+        price,
+        cost,
+        description,
+        stock,
+        is_active,
+        category_id,
+        owner_id,
+        img,
+      ]
     );
     const adminUsername = await getAdminUsername(req.adminId);
     await logAction(
@@ -159,6 +170,7 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
     is_active,
     category_id,
     owner_id,
+    img, // <<-- ฟิลด์ลิงก์รูปเดียว
   } = req.body;
   try {
     const oldResult = await pool.query("SELECT * FROM products WHERE id = $1", [
@@ -211,6 +223,11 @@ router.patch("/:id", authenticateAdmin, async (req, res) => {
     if (owner_id !== undefined) {
       setFields.push(`owner_id=$${idx++}`);
       params.push(owner_id);
+    }
+    if (img !== undefined) {
+      // <<-- อัปเดต img ถ้ามี
+      setFields.push(`img=$${idx++}`);
+      params.push(img);
     }
     setFields.push(`updated_at=NOW()`);
 
