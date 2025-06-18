@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
-// 1. Dashboard Summary (จำนวนสินค้า หมวดหมู่ ขายได้ ผู้ใช้)
+// 1. Dashboard Summary (จำนวนสินค้า หมวดหมู่ ขายได้ ผู้ใช้ ต้นทุน ยอดขาย กำไร)
 router.get("/summary", async (req, res) => {
   try {
     const productCount = await pool.query("SELECT COUNT(*) FROM products");
@@ -11,11 +11,26 @@ router.get("/summary", async (req, res) => {
     const soldCount = await pool.query(
       "SELECT COALESCE(SUM(product_amount), 0) AS sold FROM orderitems"
     );
+
+    // เพิ่มส่วนนี้เพื่อคำนวณ ต้นทุน, ยอดขายรวม, กำไร
+    const summaryResult = await pool.query(`
+      SELECT
+        COALESCE(SUM(oi.product_amount * p.cost), 0) AS total_cost,
+        COALESCE(SUM(oi.product_amount * oi.product_price), 0) AS total_sales,
+        COALESCE(SUM(oi.product_amount * (oi.product_price - p.cost)), 0) AS total_profit
+      FROM orderitems oi
+      LEFT JOIN products p ON oi.product_id = p.id
+    `);
+    const { total_cost, total_sales, total_profit } = summaryResult.rows[0];
+
     res.json({
       product_count: Number(productCount.rows[0].count),
       category_count: Number(categoryCount.rows[0].count),
       sold_count: Number(soldCount.rows[0].sold),
       user_count: Number(userCount.rows[0].count),
+      total_cost: Number(total_cost),
+      total_sales: Number(total_sales),
+      total_profit: Number(total_profit),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
