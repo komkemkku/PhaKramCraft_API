@@ -53,6 +53,9 @@ app.use("/notifications", notificationRoutes);
 const adminorderRoutes = require("./routes/admin-orders.js");
 app.use("/adminorders", adminorderRoutes);
 
+const dashboardRoutes = require("./routes/dashboard.js");
+app.use("/dashboard", dashboardRoutes);
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
