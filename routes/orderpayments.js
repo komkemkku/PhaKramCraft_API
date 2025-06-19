@@ -13,7 +13,7 @@ if (!fs.existsSync(slipUploadDir)) {
   fs.mkdirSync(slipUploadDir, { recursive: true });
 }
 
-// ตั้งค่า multer สำหรับอัปโหลดสลิป
+// ตั้งค่า multer สำหรับอัปโหลดสลิป (optional)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, slipUploadDir),
   filename: (req, file, cb) => {
@@ -60,16 +60,17 @@ router.post(
           .json({ error: "แจ้งชำระเงินไปแล้ว กรุณารอการตรวจสอบ" });
       }
 
-      // 3. validate
-      if (!req.file) {
-        return res.status(400).json({ error: "กรุณาอัปโหลดสลิป" });
-      }
+      // 3. validate (ไม่บังคับ slip แล้ว)
       if (!transfer_date || !transfer_time) {
         return res.status(400).json({ error: "กรุณาระบุวันและเวลาโอน" });
       }
 
       // 4. SAVE ลง order_payments และดึง payment_id
-      const slipRelativePath = "/uploads/slips/" + path.basename(req.file.path);
+      // slip_url จะเป็น null ถ้าไม่มีไฟล์แนบ
+      let slipRelativePath = null;
+      if (req.file) {
+        slipRelativePath = "/uploads/slips/" + path.basename(req.file.path);
+      }
 
       const payResult = await pool.query(
         `INSERT INTO order_payments (order_id, slip_url, transfer_date, transfer_time)
@@ -83,13 +84,6 @@ router.post(
         "UPDATE orders SET status = 'paid', payment_id = $1, updated_at = NOW() WHERE id = $2",
         [payment_id, order_id]
       );
-
-      // // 6. แจ้งเตือนผู้ใช้ (ลบออกหรือคอมเมนต์)
-      // await pool.query(
-      //   `INSERT INTO notifications (user_id, order_id, message, is_read, created_at)
-      //    VALUES ($1, $2, $3, false, NOW())`,
-      //   [user_id, order_id, `คุณได้แจ้งชำระเงินสำหรับคำสั่งซื้อ #${order_id}`]
-      // );
 
       res.json({
         message: "แจ้งชำระเงินสำเร็จ",
