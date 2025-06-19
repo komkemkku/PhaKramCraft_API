@@ -45,9 +45,9 @@ router.post("/:orderId", authenticateUser, async (req, res) => {
       return res.status(400).json({ error: "กรุณาระบุวันและเวลาโอน" });
     }
 
-    // INSERT ลง payments
+    // INSERT ลง order_payments
     const payResult = await client.query(
-      `INSERT INTO payments (order_id, transfer_date, transfer_time)
+      `INSERT INTO order_payments (order_id, transfer_date, transfer_time)
          VALUES ($1, $2, $3) RETURNING id`,
       [order_id, transfer_date, transfer_time]
     );
