@@ -10,8 +10,6 @@ const authenticateUser = require("../middlewares/authUser");
 router.post("/:orderId", authenticateUser, async (req, res) => {
   const user_id = req.userId;
   const order_id = req.params.orderId;
-  // ถ้าใช้ urlencoded: req.body.transfer_date
-  // ถ้าใช้ json: req.body.transfer_date
   const { transfer_date, transfer_time } = req.body;
 
   const client = await pool.connect();
@@ -45,11 +43,11 @@ router.post("/:orderId", authenticateUser, async (req, res) => {
       return res.status(400).json({ error: "กรุณาระบุวันและเวลาโอน" });
     }
 
-    // INSERT ลง order_payments
+    // INSERT ลง order_payments (ระบุ slip_url เป็นค่า default เช่น "no-slip")
     const payResult = await client.query(
-      `INSERT INTO order_payments (order_id, transfer_date, transfer_time)
-         VALUES ($1, $2, $3) RETURNING id`,
-      [order_id, transfer_date, transfer_time]
+      `INSERT INTO order_payments (order_id, slip_url, transfer_date, transfer_time)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+      [order_id, "no-slip", transfer_date, transfer_time]
     );
     const payment_id = payResult.rows[0].id;
 
