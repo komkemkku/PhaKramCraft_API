@@ -1,20 +1,24 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-require("dotenv").config();
 const authenticateUser = require("../middlewares/authUser");
 
-// === [POST] แจ้งชำระเงิน ===
+// **สำคัญ!** ในไฟล์ app.js หรือ main server ต้องมี
+// app.use(express.urlencoded({ extended: true }));
+// หรือ app.use(express.json());
+
 router.post("/:orderId", authenticateUser, async (req, res) => {
   const user_id = req.userId;
   const order_id = req.params.orderId;
+  // ถ้าใช้ urlencoded: req.body.transfer_date
+  // ถ้าใช้ json: req.body.transfer_date
   const { transfer_date, transfer_time } = req.body;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1. เช็คสิทธิ์
+    // ตรวจสอบ order
     const orderRes = await client.query(
       "SELECT * FROM orders WHERE id = $1 AND user_id = $2",
       [order_id, user_id]
@@ -30,22 +34,18 @@ router.post("/:orderId", authenticateUser, async (req, res) => {
         .status(400)
         .json({ error: "ไม่สามารถแจ้งชำระเงินสำหรับออเดอร์นี้ได้" });
     }
-
-    // 2. ห้ามแจ้งซ้ำ
     if (order.payment_id) {
       await client.query("ROLLBACK");
       return res
         .status(400)
         .json({ error: "แจ้งชำระเงินไปแล้ว กรุณารอการตรวจสอบ" });
     }
-
-    // 3. validate
     if (!transfer_date || !transfer_time) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "กรุณาระบุวันและเวลาโอน" });
     }
 
-    // 4. บันทึกลงตาราง payments
+    // INSERT ลง payments
     const payResult = await client.query(
       `INSERT INTO payments (order_id, transfer_date, transfer_time)
          VALUES ($1, $2, $3) RETURNING id`,
@@ -53,7 +53,7 @@ router.post("/:orderId", authenticateUser, async (req, res) => {
     );
     const payment_id = payResult.rows[0].id;
 
-    // 5. อัปเดตตาราง orders
+    // UPDATE orders
     await client.query(
       "UPDATE orders SET status = 'paid', payment_id = $1, updated_at = NOW() WHERE id = $2",
       [payment_id, order_id]
@@ -67,8 +67,8 @@ router.post("/:orderId", authenticateUser, async (req, res) => {
     });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err);
-    res.status(500).json({ error: "เซิร์ฟเวอร์ผิดพลาด" });
+    console.error("Payment error: ", err);
+    res.status(500).json({ error: "เซิร์ฟเวอร์ผิดพลาด", detail: err.message });
   } finally {
     client.release();
   }
